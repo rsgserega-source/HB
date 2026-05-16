@@ -1,0 +1,149 @@
+class Program:
+    def __init__(self, mode, main_body):
+        self.mode = mode
+        self.main_body = main_body
+
+
+class PrintStmt:
+    def __init__(self, value):
+        self.value = value
+
+
+class Assign:
+    def __init__(self, name, value):
+        self.name = name
+        self.value = value
+
+
+class IfStmt:
+    def __init__(self, condition, body):
+        self.condition = condition
+        self.body = body
+
+
+class Parser:
+    def __init__(self, tokens):
+        self.tokens = tokens
+        self.pos = 0
+
+    def peek(self):
+        if self.pos >= len(self.tokens):
+            return self.tokens[-1]
+        return self.tokens[self.pos]
+
+    def advance(self):
+        tok = self.peek()
+        self.pos += 1
+        return tok
+
+    def match(self, type_):
+        if self.peek().type == type_:
+            return self.advance()
+        return None
+
+    def expect(self, type_):
+        tok = self.peek()
+        if tok.type != type_:
+            raise RuntimeError(f"Expected {type_}, got {tok.type}")
+        return self.advance()
+
+    def parse(self):
+        mode = None
+
+        if self.peek().type == "ATUSE":
+            mode = self.advance().value
+
+        self.expect("HASHWORD")
+        name = self.expect("IDENT")
+
+        if name.value != "main":
+            raise RuntimeError("Only main supported")
+
+        self.expect("LBRACE")
+
+        body = []
+
+        while self.peek().type != "RBRACE":
+            body.append(self.parse_stmt())
+
+        self.expect("RBRACE")
+
+        return Program(mode, body)
+
+    def parse_stmt(self):
+        tok = self.peek()
+
+        if tok.type == "PRINT":
+            self.advance()
+            return PrintStmt(self.parse_expr())
+
+        if tok.type == "IDENT" and tok.value == "if":
+            self.advance()
+            cond = self.parse_expr()
+
+            self.expect("LBRACE")
+            body = []
+
+            while self.peek().type != "RBRACE":
+                body.append(self.parse_stmt())
+
+            self.expect("RBRACE")
+
+            return IfStmt(cond, body)
+
+        if tok.type == "IDENT":
+            name = self.advance().value
+            self.expect("EQUAL")
+            return Assign(name, self.parse_expr())
+
+        raise RuntimeError(f"Unknown statement {tok.type}")
+
+    def parse_expr(self):
+        return self.parse_comparison()
+
+    def parse_comparison(self):
+        left = self.parse_add()
+
+        while self.peek().type in ("GT", "LT", "EQEQ", "NOTEQ"):
+            op = self.advance().type
+            right = self.parse_add()
+            left = (op, left, right)
+
+        return left
+
+    def parse_add(self):
+        left = self.parse_mul()
+
+        while self.peek().type in ("PLUS", "MINUS"):
+            op = self.advance().type
+            right = self.parse_mul()
+            left = (op, left, right)
+
+        return left
+
+    def parse_mul(self):
+        left = self.parse_primary()
+
+        while self.peek().type in ("MUL", "DIV"):
+            op = self.advance().type
+            right = self.parse_primary()
+            left = (op, left, right)
+
+        return left
+
+    def parse_primary(self):
+        tok = self.peek()
+
+        if tok.type == "NUMBER":
+            self.advance()
+            return int(tok.value)
+
+        if tok.type == "STRING":
+            self.advance()
+            return tok.value
+
+        if tok.type == "IDENT":
+            self.advance()
+            return ("var", tok.value)
+
+        raise RuntimeError(f"Unexpected token {tok.type}")
